@@ -1,6 +1,6 @@
 # ConnMudaeClone
 
-I'm sitting out to make a bot similar to the function of Mudae, as requested by a friend. This repo will serve to display the code progress.
+I'm setting out to make a bot similar to the function of Mudae, as requested by a friend. This repo will serve to display the code progress.
 
 
 # Progress
