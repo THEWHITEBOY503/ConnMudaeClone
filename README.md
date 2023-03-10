@@ -24,4 +24,4 @@ Opening an issue request for each individual feature request helps me keep track
 
 
 ## Attributions
-This project uses ChatGPT, a large language model trained by [OpenAI](https://openai.com/). [(Their GitHub)](https://github.com/openai/gpt)
+This project uses ChatGPT, a large language model trained by [OpenAI](https://openai.com/). [(Their GitHub)](https://github.com/openai)
