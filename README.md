@@ -8,11 +8,11 @@ I'm setting out to make a bot similar to the function of Mudae, as requested by 
 ### Implemented:
 - Random drawing from SQL database
 - Embedding SQL draw with image
+- Assigning drawn cards to a user's database
+- 6h cooldown
 
 ### To-Do:
-- Assigning drawn cards to a user's database
 - Card rarity
-- 6h cooldown
 - Card add or remove commands
 - Trading?
 - Write installation guide for GitHub
