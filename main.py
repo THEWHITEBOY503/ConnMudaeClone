@@ -103,23 +103,19 @@ async def view(ctx, member: discord.Member = None):
             embed.set_thumbnail(url=top_card_image_url)
         await ctx.send(embed=embed)
 
-
 # Command for setting the cooldown time
 @client.command()
 @commands.has_permissions(administrator=True)
 async def setcooldown(ctx, hours: int):
     global default_cooldown_time
     default_cooldown_time = timedelta(hours=hours)
-
     for user_id in user_cooldowns:
         user_cooldowns[user_id] = datetime.now() + default_cooldown_time    
-    
     # Store the cooldown time and server ID in the database
     cursor = mydb.cursor()
     cursor.execute("REPLACE INTO server_cooldowns (server_id, cooldown_hours) VALUES (%s, %s)", (str(ctx.guild.id), hours))
     mydb.commit()
     cursor.close()
-    
     await ctx.send(f"The cooldown time has been set to {hours} hours.")
 
 # Handle missing permissions error
@@ -132,7 +128,6 @@ async def setcooldown_error(ctx, error):
 async def erasecards(ctx):
     # Prompt the user for confirmation
     await ctx.send("Are you sure you want to erase your card database? This cannot be undone. Reply 'erase' to confirm.")
-    
     def check(message):
         return message.author == ctx.author and message.channel == ctx.channel and message.content.lower() == "erase"
     try:
@@ -326,10 +321,6 @@ async def resetbias(ctx):
         await ctx.send("Your top card has been reset!")
     else:
         await ctx.send("You don't have a top card set.")
-        
-import random
-
-import random
 
 @client.command()
 async def trade(ctx, card_id: int, member: discord.Member = None):
@@ -340,7 +331,6 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
     else:
         await ctx.send("Please tag the user you want to trade with.")
         return
-    
     # check if sender has multiple cards with the same ID
     mycursor.execute("SELECT draw_id FROM user_cards WHERE user_id = %s AND card_id = %s", (sender_id, card_id))
     cards = mycursor.fetchall()
@@ -352,20 +342,16 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
     else:
         await ctx.send(f"You don't have any cards with ID {card_id}.")
         return
-    
     trade_msg = f"{ctx.author.mention} wants to trade card ID {card_id} with you. Please respond with the card ID you wish to trade, or type `decline` to decline."
     await ctx.send(trade_msg)
-    
     def check(message):
         return message.author == member and message.channel == ctx.channel
-    
     try:
         msg = await client.wait_for('message', check=check, timeout=30.0)
         if msg.content.lower() == 'decline':
             await ctx.send('Trade declined.')
         else:
             card_id_2 = int(msg.content)
-            
             # check if recipient has multiple cards with the same ID
             mycursor.execute("SELECT draw_id FROM user_cards WHERE user_id = %s AND card_id = %s", (recipient_id, card_id_2))
             recipient_cards = mycursor.fetchall()
@@ -377,7 +363,6 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
             else:
                 await ctx.send(f"{member.mention} doesn't have any cards with ID {card_id_2}.")
                 return
-            
             # perform the trade
             mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (recipient_id, sender_id, card_id, card_to_trade))
             mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (sender_id, recipient_id, card_id_2, recipient_card_to_trade))
@@ -386,7 +371,6 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
     except asyncio.TimeoutError:
         await ctx.send(f'{member.mention} did not respond in time. Trade cancelled.')
 
-
                 
 # Start the bot with your Discord bot token
-client.run('your discord token goes here')
+client.run('--token goes here--')
