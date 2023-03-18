@@ -2,8 +2,11 @@ import os
 import discord
 import mysql.connector
 import random
+import string
 from discord.ext import commands
 from datetime import datetime, timedelta
+import asyncio
+import uuid
 
 # Connect to MySQL database
 mydb = mysql.connector.connect(
@@ -16,30 +19,34 @@ mydb = mysql.connector.connect(
 # Create a new instance of the client
 intents = discord.Intents().all()
 client = commands.Bot(command_prefix='!', intents=intents)
-
 # Default cooldown time (6 hours)
 default_cooldown_time = timedelta(hours=6)
-
 # Dictionary to store cooldowns for each user
 user_cooldowns = {}
-
 # Event listener for when the bot is ready
 @client.event
 async def on_ready():
     print("Bot is ready.")
 
-# Command for drawing a random card
 @client.command()
 async def draw(ctx):
     discuserid = ctx.author.id
     cursor = mydb.cursor()
-    cursor.execute("SELECT card_name, card_ID, image_link, color FROM cards ORDER BY RAND() LIMIT 1;")
-    result = cursor.fetchone()
-    name, card_id, image_url, color_hex = result
+    cursor.execute("SELECT card_name, card_ID, image_link, color, rarity FROM cards WHERE rarity > 0;")
+    results = cursor.fetchall()
+    total_rarity = sum(result[4] for result in results)
+    rand_int = random.randint(0, total_rarity-1)
+    cumulative_rarity = 0
+    for result in results:
+        cumulative_rarity += result[4]
+        if rand_int < cumulative_rarity:
+            name, card_id, image_url, color_hex, rarity = result
+            break
     color = discord.Colour(int(color_hex, 16))  # Convert hex string to integer and create Colour object
     embed = discord.Embed(title=f"You got {name}!", description=f"ID {card_id}!", color=color)
     embed.set_image(url=image_url)
-    
+    # Generate draw ID
+    draw_id = uuid.uuid4().hex  # Generate a random hexadecimal string
     # Check if the server has a cooldown time set in the database
     cursor.execute("SELECT cooldown_hours FROM server_cooldowns WHERE server_id = %s", (str(ctx.guild.id),))
     cooldown_result = cursor.fetchone()
@@ -48,44 +55,54 @@ async def draw(ctx):
         cooldown_time = timedelta(hours=cooldown_hours)
     else:
         cooldown_time = default_cooldown_time
-    
     # Check if user is on cooldown
     if discuserid in user_cooldowns and datetime.now() < user_cooldowns[discuserid]:
         cooldown_time_remaining = user_cooldowns[discuserid] - datetime.now()
         await ctx.send(f"Sorry, you need to wait {cooldown_time_remaining} before drawing another card.")
         return
-    
     # Add card to user's collection and set cooldown
-    cursor.execute("INSERT INTO user_cards (user_id, card_id) VALUES (%s, %s)", (discuserid, card_id))
+    cursor.execute("INSERT INTO user_cards (user_id, card_id, draw_id) VALUES (%s, %s, %s)", (discuserid, card_id, draw_id))
     mydb.commit()
     cursor.close()
     user_cooldowns[discuserid] = datetime.now() + cooldown_time
-    
+    # Add draw ID to the footer
+    embed.set_footer(text=f"Draw ID: {draw_id}")
     await ctx.send(embed=embed)
 
 @client.command()
-async def view(ctx):
-    discuserid = ctx.message.author.id
+async def view(ctx, member: discord.Member = None):
+    discuserid = ctx.message.author.id if not member else member.id
     mycursor = mydb.cursor()
-    mycursor.execute("SELECT card_id FROM user_cards WHERE user_id = %s", (discuserid,))
+    mycursor.execute("SELECT card_id, is_top_card FROM user_cards WHERE user_id = %s ORDER BY is_top_card DESC", (discuserid,))
     result = mycursor.fetchall()
     if len(result) == 0:
-        await ctx.send("You don't have any cards yet!")
+        if not member:
+            await ctx.send("You don't have any cards yet!")
+        else:
+            await ctx.send(f"{member.display_name} doesn't have any cards yet!")
     else:
         embed = None
+        top_card_image_url = None
         for row in result:
             card_id = row[0]
+            is_top_card = row[1]
             mycursor.execute("SELECT card_name, image_link, color FROM cards WHERE card_id = %s", (card_id,))
             card_info = mycursor.fetchone()
             card_name = card_info[0]
             card_image_url = card_info[1]
             color_hex = card_info[2]
             color = int(color_hex, 16)
+            if is_top_card:
+                top_card_image_url = card_image_url
             if embed is None:
-                embed = discord.Embed(title="Your Cards", color=discord.Colour(color))
+                embed = discord.Embed(title=f"{member.display_name}'s Cards" if member else "Your Cards", color=discord.Colour(color))
+                if top_card_image_url:
+                    embed.set_thumbnail(url=top_card_image_url)
             embed.add_field(name=card_name, value=f"ID: {card_id}", inline=False)
-            embed.set_thumbnail(url=card_image_url)
+        if top_card_image_url and not embed.thumbnail:
+            embed.set_thumbnail(url=top_card_image_url)
         await ctx.send(embed=embed)
+
 
 # Command for setting the cooldown time
 @client.command()
@@ -109,7 +126,7 @@ async def setcooldown(ctx, hours: int):
 @setcooldown.error
 async def setcooldown_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.send("You do not have permission to use this command.")
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
 
 @client.command()
 async def erasecards(ctx):
@@ -118,7 +135,6 @@ async def erasecards(ctx):
     
     def check(message):
         return message.author == ctx.author and message.channel == ctx.channel and message.content.lower() == "erase"
-    
     try:
         # Wait for the user's response
         await client.wait_for("message", check=check, timeout=30)
@@ -126,14 +142,251 @@ async def erasecards(ctx):
         # If the user doesn't respond within 30 seconds, cancel the command
         await ctx.send("You took too long to respond. Command cancelled.")
         return
-    
     # Delete the user's entries from the database
     cursor = mydb.cursor()
     cursor.execute("DELETE FROM user_cards WHERE user_id = %s", (ctx.author.id,))
     mydb.commit()
     cursor.close()
-    
-    await ctx.send("Your card database has been erased.")        
+    await ctx.send("Your card database has been erased.")
 
+@client.command()
+async def cardview(ctx, card_id=None):
+    mycursor = mydb.cursor()
+    if card_id:
+        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s", (card_id,))
+        result = mycursor.fetchone()
+        if not result:
+            await ctx.send(f"Card with ID {card_id} does not exist.")
+            return
+        card_name = result[0]
+        card_id = result[1]
+        card_image_url = result[2]
+        color_hex = result[3]
+        color = int(color_hex, 16)
+        embed = discord.Embed(title=card_name, description=f"ID: {card_id}")
+        embed.set_image(url=card_image_url)
+        embed.colour = discord.Colour(color)
+        await ctx.send(embed=embed)
+    else:
+        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards")
+        result = mycursor.fetchall()
+        total_cards = len(result)
+        current_card = 1
+        embed = None
+        while True:
+            row = result[current_card-1]
+            card_name = row[0]
+            card_id = row[1]
+            card_image_url = row[2]
+            color_hex = row[3]
+            color = int(color_hex, 16)
+            if embed is not None:
+                await message.delete()
+            embed = discord.Embed(title="Server Cards", color=discord.Colour(color))
+            embed.set_image(url=card_image_url)
+            embed.add_field(name=card_name, value=f"ID: {card_id} | {current_card}/{total_cards}", inline=False)
+            message = await ctx.send(embed=embed)
+            if total_cards == 1:
+                break
+            if current_card == 1:
+                await message.add_reaction("➡️")
+            elif current_card == total_cards:
+                await message.add_reaction("⬅️")
+            else:
+                await message.add_reaction("⬅️")
+                await message.add_reaction("➡️")
+            def check(reaction, user):
+                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
+            try:
+                reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
+            except asyncio.TimeoutError:
+                break
+            else:
+                if str(reaction.emoji) == "⬅️" and current_card > 1:
+                    current_card -= 1
+                elif str(reaction.emoji) == "➡️" and current_card < total_cards:
+                    current_card += 1
+                await message.remove_reaction(reaction, user)
+                await asyncio.sleep(1)  
+
+@client.command()
+@commands.has_permissions(administrator=True)
+async def addcard(ctx, card_name, image_link, color, rarity: int):
+    mycursor = mydb.cursor()
+    while True:
+        # Generate random 4-digit ID
+        card_id = ''.join(random.choices(string.digits, k=4))
+        # Check if ID already exists in database
+        mycursor.execute("SELECT COUNT(*) FROM cards WHERE card_id = %s", (card_id,))
+        result = mycursor.fetchone()
+        if result[0] == 0:
+            # ID is unique, break out of loop
+            break
+    sql = "INSERT INTO cards (card_name, card_id, image_link, color, rarity) VALUES (%s, %s, %s, %s, %s)"
+    val = (card_name, card_id, image_link, color, rarity)
+    mycursor.execute(sql, val)
+    mydb.commit()
+    await ctx.send(f"Card added: {card_name} (ID: {card_id})")
+@addcard.error
+async def addcard_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
+
+@client.command()
+@commands.has_permissions(administrator=True)
+async def removecard(ctx, card_id: int):
+    mycursor = mydb.cursor()
+    try:
+        mycursor.execute("DELETE FROM cards WHERE card_id = %s", (card_id,))
+        mydb.commit()
+        await ctx.send(f"Card with ID {card_id} has been removed.")
+    except mysql.connector.Error as error:
+        await ctx.send(f"Failed to remove card with ID {card_id}. Error: {error}")
+@removecard.error
+async def removecard_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
+
+@client.command()
+@commands.has_permissions(administrator=True)
+async def remove(ctx, card_id: int, member: discord.Member = None):
+    member = member or ctx.author
+    cursor = mydb.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM user_cards WHERE user_id = %s AND card_id = %s", (member.id, card_id))
+    result = cursor.fetchall()
+    if not result:
+        await ctx.send(f"{member.mention} doesn't have any cards with ID {card_id}.")
+        return
+    if len(result) == 1:
+        cursor.execute("DELETE FROM user_cards WHERE user_id = %s AND card_id = %s", (member.id, card_id))
+        mydb.commit()
+        await ctx.send(f"{member.mention} has removed the card with ID {card_id}.")
+        return
+    # Select a random duplicate card with the given card_id
+    card = random.choice(result)
+    draw_id = card["draw_id"]
+    cursor.execute("DELETE FROM user_cards WHERE user_id = %s AND card_id = %s AND draw_id = %s", (member.id, card_id, draw_id))
+    mydb.commit()
+    await ctx.send(f"{member.mention} has removed one of their cards with ID {card_id}.")
+@remove.error
+async def remove_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
+
+@client.command()
+@commands.has_permissions(administrator=True)
+async def add(ctx, card_id: int, member: discord.Member = None):
+    member = member or ctx.author
+    cursor = mydb.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM cards WHERE card_id = %s", (card_id,))
+    card = cursor.fetchone()
+    if not card:
+        await ctx.send(f"Sorry, the card with ID {card_id} does not exist in the database.")
+        return
+    cursor.execute("SELECT * FROM user_cards WHERE user_id = %s AND card_id = %s", (member.id, card_id))
+    result = cursor.fetchall()
+    if result:
+        await ctx.send(f"{member.mention} already has the card with ID {card_id}.")
+        return
+    draw_id = str(uuid.uuid4())
+    cursor.execute("INSERT INTO user_cards (user_id, card_id, draw_id) VALUES (%s, %s, %s)", (member.id, card_id, draw_id))
+    mydb.commit()
+    if member == ctx.author:
+        await ctx.send(f"{member.mention}, you have added the card with ID {card_id} to your collection.")
+    else:
+        await ctx.send(f"{ctx.author.mention} has added the card with ID {card_id} to {member.mention}'s collection.")
+@add.error
+async def add_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
+
+@client.command()
+async def bias(ctx, card_id: int):
+    discuserid = ctx.message.author.id
+    mycursor = mydb.cursor()
+    mycursor.execute("SELECT card_id FROM user_cards WHERE user_id = %s", (discuserid,))
+    result = mycursor.fetchall()
+    if len(result) == 0:
+        await ctx.send("You don't have any cards yet!")
+    elif card_id not in [row[0] for row in result]:
+        await ctx.send("You don't have that card in your collection!")
+    else:
+        mycursor.execute("UPDATE user_cards SET is_top_card = FALSE WHERE user_id = %s AND is_top_card = TRUE", (discuserid,))
+        mycursor.execute("UPDATE user_cards SET is_top_card = TRUE WHERE user_id = %s AND card_id = %s", (discuserid, card_id))
+        mydb.commit()
+        await ctx.send(f"Your top card has been updated to card ID {card_id}!")
+
+@client.command()
+async def resetbias(ctx):
+    discuserid = ctx.message.author.id
+    mycursor = mydb.cursor()
+    mycursor.execute("UPDATE user_cards SET is_top_card = 0 WHERE user_id = %s AND is_top_card = 1", (discuserid,))
+    mydb.commit()
+    if mycursor.rowcount > 0:
+        await ctx.send("Your top card has been reset!")
+    else:
+        await ctx.send("You don't have a top card set.")
+        
+import random
+
+import random
+
+@client.command()
+async def trade(ctx, card_id: int, member: discord.Member = None):
+    mycursor = mydb.cursor()
+    sender_id = ctx.author.id
+    if member is not None:
+        recipient_id = member.id
+    else:
+        await ctx.send("Please tag the user you want to trade with.")
+        return
+    
+    # check if sender has multiple cards with the same ID
+    mycursor.execute("SELECT draw_id FROM user_cards WHERE user_id = %s AND card_id = %s", (sender_id, card_id))
+    cards = mycursor.fetchall()
+    if len(cards) > 1:
+        # select a random card to trade
+        card_to_trade = random.choice(cards)[0]
+    elif len(cards) == 1:
+        card_to_trade = cards[0][0]
+    else:
+        await ctx.send(f"You don't have any cards with ID {card_id}.")
+        return
+    
+    trade_msg = f"{ctx.author.mention} wants to trade card ID {card_id} with you. Please respond with the card ID you wish to trade, or type `decline` to decline."
+    await ctx.send(trade_msg)
+    
+    def check(message):
+        return message.author == member and message.channel == ctx.channel
+    
+    try:
+        msg = await client.wait_for('message', check=check, timeout=30.0)
+        if msg.content.lower() == 'decline':
+            await ctx.send('Trade declined.')
+        else:
+            card_id_2 = int(msg.content)
+            
+            # check if recipient has multiple cards with the same ID
+            mycursor.execute("SELECT draw_id FROM user_cards WHERE user_id = %s AND card_id = %s", (recipient_id, card_id_2))
+            recipient_cards = mycursor.fetchall()
+            if len(recipient_cards) > 1:
+                # select a random card to trade
+                recipient_card_to_trade = random.choice(recipient_cards)[0]
+            elif len(recipient_cards) == 1:
+                recipient_card_to_trade = recipient_cards[0][0]
+            else:
+                await ctx.send(f"{member.mention} doesn't have any cards with ID {card_id_2}.")
+                return
+            
+            # perform the trade
+            mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (recipient_id, sender_id, card_id, card_to_trade))
+            mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (sender_id, recipient_id, card_id_2, recipient_card_to_trade))
+            mydb.commit()
+            await ctx.send(f"Trade complete! {ctx.author.mention} now has card ID {card_id_2}, and {member.mention} has card ID {card_id}.")
+    except asyncio.TimeoutError:
+        await ctx.send(f'{member.mention} did not respond in time. Trade cancelled.')
+
+
+                
 # Start the bot with your Discord bot token
-client.run('---TOKEN GOES HERE---')
+client.run('your discord token goes here')
