@@ -7,6 +7,7 @@ from discord.ext import commands
 from datetime import datetime, timedelta
 import asyncio
 import uuid
+import traceback
 
 # Connect to MySQL database
 mydb = mysql.connector.connect(
@@ -27,6 +28,19 @@ user_cooldowns = {}
 @client.event
 async def on_ready():
     print("Bot is ready.")
+
+@client.event
+async def on_command_error(ctx, error):
+    # get the traceback of the error
+    error_traceback = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+    # find the last message that starts with "!"
+    async for message in ctx.channel.history(limit=50, before=ctx.message, oldest_first=False):
+        if message.content.startswith('!'):
+            channel_id = message.channel.id
+            break
+    # send the error message to the channel that the last "!command" message was sent in
+    channel = client.get_channel(channel_id)
+    await channel.send(f"Whoops, that's an error! Please share this information with my developers:\n```{error_traceback}```")
 
 @client.command()
 async def draw(ctx):
@@ -233,6 +247,7 @@ async def removecard(ctx, card_id: int):
     mycursor = mydb.cursor()
     try:
         mycursor.execute("DELETE FROM cards WHERE card_id = %s", (card_id,))
+        mycursor.execute("DELETE FROM user_cards WHERE card_id = %s", (card_id,))
         mydb.commit()
         await ctx.send(f"Card with ID {card_id} has been removed.")
     except mysql.connector.Error as error:
@@ -371,6 +386,23 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
     except asyncio.TimeoutError:
         await ctx.send(f'{member.mention} did not respond in time. Trade cancelled.')
 
+@client.command()
+async def bothelp(ctx):
+    embed = discord.Embed(title="List of Commands", color=discord.Colour(0x00FF00))
+    embed.add_field(name="!draw", value="Draw a random card from the deck.", inline=False)
+    embed.add_field(name="!view", value="View your card collection.", inline=False)
+    embed.add_field(name="!setcooldown <Hours>", value="Set the cooldown time between draws.[ADMIN]", inline=False)
+    embed.add_field(name="!erasecards", value="Erase your entire card collection.", inline=False)
+    embed.add_field(name="!cardview <Optional card ID>", value="View details about a specific card, if specified, otherwise display the server deck.", inline=False)
+    embed.add_field(name="!addcard \"<Name>\" \"<Link>\" \"<Color [0xFFFFFF Format]>\" <Rarity>", value="Add a card to the deck. [ADMIN]", inline=False)
+    embed.add_field(name="!removecard <CardID>", value="Remove a card from the deck. [ADMIN]", inline=False)
+    embed.add_field(name="!remove <CardID> <Optional Member>", value="Remove a card from someone's collection. If no user is specified, it will be removed from your own. [ADMIN]", inline=False)
+    embed.add_field(name="!add <CardID> <Optional Member>", value="Add a card to someone's collection. If no user is specified, it will be added to your own. [ADMIN]", inline=False)
+    embed.add_field(name="!bias <CardID>", value="Sets a card to be shown on top of your card list.", inline=False)
+    embed.add_field(name="!resetbias", value="Resets your top card.", inline=False)
+    embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
+    await ctx.send(embed=embed)
+
                 
 # Start the bot with your Discord bot token
-client.run('--token goes here--')
+client.run('--TOKEN GOES HERE--')
