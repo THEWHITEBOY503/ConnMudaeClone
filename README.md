@@ -57,8 +57,16 @@ Final testing and debugging is currently in progress, before I call the bot "fin
 ## Feature suggestions
 
 ### To suggest further features, please open a request under "Issues".
-Opening an issue request for each individual feature request helps me keep track of my progress on them a lot better than on Discord. 
+Opening an issue request for each individual feature request helps me keep track of my progress on them a lot better. 
 
+### For bug reports, please open a request under "Issues".
+If you can, mark it with the "Bug" label so I can sort it better. I'll post comments to your thread and assign any additional tags as they are needed. 
+
+### If you'd like to contribute, please feel free to make a pull request!
+Even though this project is marked as "Completed", there's always room for improvement! I'd love to see and ideas or changes you may have!
 
 ## Attributions
 This project was written with the assistance of ChatGPT, a large language model trained by [OpenAI](https://openai.com/). [(Their GitHub)](https://github.com/openai)
+
+## Licensing
+This project is licensed under the MIT license. It's free, but I'm sure you knew that, given that it's open-source and freely available on GitHub. If you'd like to put your own spin on this project, please feel absolutely free to! However, this software is provided "as-is", with no warranty of any kind, express or implied. 
