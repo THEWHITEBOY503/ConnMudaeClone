@@ -69,4 +69,4 @@ Even though this project is marked as "Completed", there's always room for impro
 This project was written with the assistance of ChatGPT, a large language model trained by [OpenAI](https://openai.com/). [(Their GitHub)](https://github.com/openai)
 
 ## Licensing
-This project is licensed under the MIT license. It's free, but I'm sure you knew that, given that it's open-source and freely available on GitHub. If you'd like to put your own spin on this project, please feel absolutely free to! However, this software is provided "as-is", with no warranty of any kind, express or implied. 
+This project is licensed under the MIT license. It's free, but I'm sure you knew that, given that it's open-source and freely available on GitHub. If you'd like to put your own spin on this project, please feel absolutely free to! However, this software is provided "as-is", with no warranty of any kind, express or implied. For more information on the MIT license as it applies to this project, [Please see the licensing file here.](https://github.com/THEWHITEBOY503/ConnMudaeClone/blob/main/LICENSE)
