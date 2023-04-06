@@ -44,7 +44,7 @@ Trade a card with another member.
 ## Dependancies
 This application needs MySQL to function correctly. [You can find installation instructions for your system here.](https://dev.mysql.com/doc/mysql-installation-excerpt/5.7/en/) You also need Python (Obviously) and the `discord.py` package, which can be installed with `pip install discord.py`
 ## Database structure
-This bot requires a MySQL database to run. You will need three tables, `cards`, `uesr_cards`, and `server_cooldowns`, 
+This bot requires a MySQL database to run. You will need three tables, `cards`, `user_cards`, and `server_cooldowns`, 
 `cards` needs these columns: `card_name` varchar(255), `card_ID` int, `image_link` varchar(255), `color` varchar(255), `rarity` int
 `user_cards` needs these columns: `user_id` bigint, `card_id` int, `draw_id` varchar(255), `is_top_card` varchar(100)
 `server_cooldowns` needs two columns: `server_id` bigint, `cooldown_hours` int
