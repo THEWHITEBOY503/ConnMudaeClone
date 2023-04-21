@@ -48,6 +48,7 @@ This bot requires a MySQL database to run. You will need three tables, `cards`, 
 `cards` needs these columns: `card_name` varchar(255), `card_ID` int, `image_link` varchar(255), `color` varchar(255), `rarity` int
 `user_cards` needs these columns: `user_id` bigint, `card_id` int, `draw_id` varchar(255), `is_top_card` varchar(100)
 `server_cooldowns` needs two columns: `server_id` bigint, `cooldown_hours` int
+<img width="952" alt="Screenshot 2023-04-21 at 14 48 59" src="https://user-images.githubusercontent.com/28698926/233722692-6315c495-8bcb-4ff1-b6d3-c51fa70b3658.png">
 ## Installation
 This section is under construction. Please check again later.
 ## Progress
