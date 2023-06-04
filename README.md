@@ -20,6 +20,7 @@ Erase your entire card collection.
 
 - `!cardview <Optional card ID>`
 View details about a specific card, if specified, otherwise display the server deck.
+**Note: As requested, the cardview command is now admin only, unless a card ID is specified.**
 
 - `!addcard "<Name>" "<Link>" "<Color [0xFFFFFF Format]>" <Rarity>`
 Add a card to the deck. You'll need to specify a name for your card, an image link, a color for your card (in 0xFFFFFF HTML color format), and a rarity level 0-16, with 16 being the most rare, 1 being the most, and 0 being manual assignment only. **[ADMIN]**
@@ -41,6 +42,10 @@ Resets your top card.
 
 - `!trade <CardID> @Member`
 Trade a card with another member.
+
+- `!wipe`
+Erases the entire database. [ADMIN]
+
 ## Dependancies
 This application needs MySQL to function correctly. [You can find installation instructions for your system here.](https://dev.mysql.com/doc/mysql-installation-excerpt/5.7/en/) You also need Python (Obviously) and the `discord.py` package, which can be installed with `pip install discord.py`
 ## Database structure

@@ -31,16 +31,27 @@ async def on_ready():
 
 @client.event
 async def on_command_error(ctx, error):
+    # Filter only the specific error
+    error_message = str(error)
+    print(error_message)
+    if "is not found" in error_message:
+        return
+    if isinstance(error, commands.MissingPermissions) and str(error) == "You are missing Administrator permission(s) to run this command.":
+        return
+    
     # get the traceback of the error
     error_traceback = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+    
     # find the last message that starts with "!"
     async for message in ctx.channel.history(limit=50, before=ctx.message, oldest_first=False):
         if message.content.startswith('!'):
             channel_id = message.channel.id
             break
+    
     # send the error message to the channel that the last "!command" message was sent in
     channel = client.get_channel(channel_id)
     await channel.send(f"Whoops, that's an error! Please share this information with my developers:\n```{error_traceback}```")
+    
 
 @client.command()
 async def draw(ctx):
@@ -177,46 +188,50 @@ async def cardview(ctx, card_id=None):
         embed.colour = discord.Colour(color)
         await ctx.send(embed=embed)
     else:
-        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards")
-        result = mycursor.fetchall()
-        total_cards = len(result)
-        current_card = 1
-        embed = None
-        while True:
-            row = result[current_card-1]
-            card_name = row[0]
-            card_id = row[1]
-            card_image_url = row[2]
-            color_hex = row[3]
-            color = int(color_hex, 16)
-            if embed is not None:
-                await message.delete()
-            embed = discord.Embed(title="Server Cards", color=discord.Colour(color))
-            embed.set_image(url=card_image_url)
-            embed.add_field(name=card_name, value=f"ID: {card_id} | {current_card}/{total_cards}", inline=False)
-            message = await ctx.send(embed=embed)
-            if total_cards == 1:
-                break
-            if current_card == 1:
-                await message.add_reaction("➡️")
-            elif current_card == total_cards:
-                await message.add_reaction("⬅️")
-            else:
-                await message.add_reaction("⬅️")
-                await message.add_reaction("➡️")
-            def check(reaction, user):
-                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
-            try:
-                reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
-            except asyncio.TimeoutError:
-                break
-            else:
-                if str(reaction.emoji) == "⬅️" and current_card > 1:
-                    current_card -= 1
-                elif str(reaction.emoji) == "➡️" and current_card < total_cards:
-                    current_card += 1
-                await message.remove_reaction(reaction, user)
-                await asyncio.sleep(1)  
+        isadmin = ctx.message.author.guild_permissions.administrator
+        if isadmin == True:
+            mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards")
+            result = mycursor.fetchall()
+            total_cards = len(result)
+            current_card = 1
+            embed = None
+            while True:
+                row = result[current_card-1]
+                card_name = row[0]
+                card_id = row[1]
+                card_image_url = row[2]
+                color_hex = row[3]
+                color = int(color_hex, 16)
+                if embed is not None:
+                    await message.delete()
+                embed = discord.Embed(title="Server Cards", color=discord.Colour(color))
+                embed.set_image(url=card_image_url)
+                embed.add_field(name=card_name, value=f"ID: {card_id} | {current_card}/{total_cards}", inline=False)
+                message = await ctx.send(embed=embed)
+                if total_cards == 1:
+                    break
+                if current_card == 1:
+                    await message.add_reaction("➡️")
+                elif current_card == total_cards:
+                    await message.add_reaction("⬅️")
+                else:
+                    await message.add_reaction("⬅️")
+                    await message.add_reaction("➡️")
+                def check(reaction, user):
+                    return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
+                try:
+                    reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
+                except asyncio.TimeoutError:
+                    break
+                else:
+                    if str(reaction.emoji) == "⬅️" and current_card > 1:
+                        current_card -= 1
+                    elif str(reaction.emoji) == "➡️" and current_card < total_cards:
+                        current_card += 1
+                    await message.remove_reaction(reaction, user)
+                    await asyncio.sleep(1)  
+        else:
+            await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
 
 @client.command()
 @commands.has_permissions(administrator=True)
@@ -402,6 +417,25 @@ async def bothelp(ctx):
     embed.add_field(name="!resetbias", value="Resets your top card.", inline=False)
     embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
     await ctx.send(embed=embed)
+
+@client.command()
+@commands.has_permissions(administrator=True)
+async def wipe(ctx):
+    await ctx.send("!!!!WARNING!!!! THIS WILL COMPLETELY WIPE THE BOTS DATABASE. THIS ACTION CANNOT BE REVERSED. PLEASE MAKE SURE YOU UNDERSTAND WHAT YOU ARE DOING. ARE YOU ABSOLUTELY SURE THIS IS WHAT YOU WANT TO DO? REPLY `goodbye` TO CONFIRM.")
+    def check(message):
+        return message.author == ctx.author and message.channel == ctx.channel and message.content.lower() == "goodbye"
+    try:
+        await client.wait_for("message", check=check, timeout=30)
+    except asyncio.TimeoutError:
+        await ctx.send("You took too long to respond. Command cancelled.")
+        return
+    cursor = mydb.cursor()
+    cursor.execute("DELETE FROM cards")
+    cursor.execute("DELETE FROM user_cards")
+    cursor.execute("DELETE FROM server_cooldowns")
+    mydb.commit()
+    cursor.close()
+    await ctx.send("All records erased. Thank you for using this bot. We hope to see your continued support. <3")
 
                 
 # Start the bot with your Discord bot token
