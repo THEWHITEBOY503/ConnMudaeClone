@@ -94,7 +94,7 @@ async def draw(ctx):
         await ctx.send(f"Sorry, you need to wait {cooldown_time_remaining} before drawing another card.")
         return
     # Add card to user's collection and set cooldown
-    cursor.execute("INSERT INTO user_cards (user_id, card_id, draw_id) VALUES (%s, %s, %s)", (discuserid, card_id, draw_id))
+    cursor.execute("INSERT INTO user_cards (user_id, card_id, draw_id, is_top_card) VALUES (%s, %s, %s, 0)", (discuserid, card_id, draw_id))
     mydb.commit()
     cursor.close()
     user_cooldowns[discuserid] = datetime.now() + cooldown_time
