@@ -20,6 +20,7 @@ mydb = mysql.connector.connect(
 # Create a new instance of the client
 intents = discord.Intents().all()
 client = commands.Bot(command_prefix='!', intents=intents)
+client.remove_command('help')
 # Default cooldown time (6 hours)
 default_cooldown_time = timedelta(hours=6)
 # Dictionary to store cooldowns for each user
@@ -27,6 +28,7 @@ user_cooldowns = {}
 # Event listener for when the bot is ready
 @client.event
 async def on_ready():
+    await client.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="!help"))
     print("Bot is ready.")
 
 @client.event
@@ -49,12 +51,18 @@ async def on_command_error(ctx, error):
             break
     
     # send the error message to the channel that the last "!command" message was sent in
-    channel = client.get_channel(channel_id)
-    await channel.send(f"Whoops, that's an error! Please share this information with my developers:\n```{error_traceback}```")
+    if channel_id:
+        channel = client.get_channel(channel_id)
+        await channel.send(f"Whoops, that's an error! Please share this information with my developers:\n```{error_traceback}```")
+    else:
+        print("ERROR: ")
+        print(error_traceback)
+        
     
 
 @client.command()
 async def draw(ctx):
+    mydb.reconnect()
     discuserid = ctx.author.id
     cursor = mydb.cursor()
     cursor.execute("SELECT card_name, card_ID, image_link, color, rarity FROM cards WHERE rarity > 0;")
@@ -95,43 +103,98 @@ async def draw(ctx):
     await ctx.send(embed=embed)
 
 @client.command()
-async def view(ctx, member: discord.Member = None):
-    discuserid = ctx.message.author.id if not member else member.id
+async def view(ctx, card_id=None, member: discord.Member = None):
+    mydb.reconnect()
     mycursor = mydb.cursor()
-    mycursor.execute("SELECT card_id, is_top_card FROM user_cards WHERE user_id = %s ORDER BY is_top_card DESC", (discuserid,))
-    result = mycursor.fetchall()
-    if len(result) == 0:
-        if not member:
-            await ctx.send("You don't have any cards yet!")
-        else:
-            await ctx.send(f"{member.display_name} doesn't have any cards yet!")
+    if card_id:
+        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s", (card_id,))
+        result = mycursor.fetchone()
+        if not result:
+            await ctx.send(f"Card with ID {card_id} does not exist.")
+            return
+        card_name = result[0]
+        card_id = result[1]
+        card_image_url = result[2]
+        color_hex = result[3]
+        color = int(color_hex, 16)
+        embed = discord.Embed(title=card_name, description=f"ID: {card_id}")
+        embed.set_image(url=card_image_url)
+        embed.colour = discord.Colour(color)
+        await ctx.send(embed=embed)
     else:
-        embed = None
-        top_card_image_url = None
-        for row in result:
-            card_id = row[0]
-            is_top_card = row[1]
-            mycursor.execute("SELECT card_name, image_link, color FROM cards WHERE card_id = %s", (card_id,))
-            card_info = mycursor.fetchone()
-            card_name = card_info[0]
-            card_image_url = card_info[1]
-            color_hex = card_info[2]
-            color = int(color_hex, 16)
-            if is_top_card:
-                top_card_image_url = card_image_url
-            if embed is None:
-                embed = discord.Embed(title=f"{member.display_name}'s Cards" if member else "Your Cards", color=discord.Colour(color))
+        discuserid = ctx.message.author.id if not member else member.id
+        mycursor.execute("SELECT card_id, is_top_card, COUNT(*) as count FROM user_cards WHERE user_id = %s GROUP BY card_id, is_top_card ORDER BY is_top_card DESC", (discuserid,))
+        result = mycursor.fetchall()
+        if len(result) == 0:
+            if not member:
+                await ctx.send("You don't have any cards yet! :(")
+            else:
+                await ctx.send(f"{member.display_name} doesn't have any cards yet! :(")
+        else:
+            total_cards = len(result)
+            current_page = 1
+            cards_per_page = 5  # Number of cards to display per page
+            embed = None
+
+            def generate_embed(page):
+                start_index = (page - 1) * cards_per_page
+                end_index = min(start_index + cards_per_page, total_cards)
+                embed = None
+                top_card_image_url = None
+                for i in range(start_index, end_index):
+                    row = result[i]
+                    card_id = row[0]
+                    is_top_card = row[1]
+                    count = row[2]
+                    mycursor.execute("SELECT card_name, image_link, color FROM cards where card_id = %s", (card_id,))
+                    card_info = mycursor.fetchone()
+                    card_name = card_info[0]
+                    card_image_url = card_info[1]
+                    color_hex = card_info[2]
+                    color = int(color_hex, 16)
+                    if is_top_card:
+                        top_card_image_url = card_image_url
+                    if embed is None:
+                        embed = discord.Embed(title=f"{member.display_name}'s Cards" if member else "Your Cards", color=discord.Colour(color))
+                    embed.add_field(name=card_name, value=f"ID: {card_id} (x{count})", inline=False)           
                 if top_card_image_url:
                     embed.set_thumbnail(url=top_card_image_url)
-            embed.add_field(name=card_name, value=f"ID: {card_id}", inline=False)
-        if top_card_image_url and not embed.thumbnail:
-            embed.set_thumbnail(url=top_card_image_url)
-        await ctx.send(embed=embed)
+                else:
+                    embed.set_thumbnail(url=card_image_url)
+                
+                embed.set_footer(text=f"Page {current_page}/{total_pages}")
+                return embed
+
+            total_pages = (total_cards + cards_per_page - 1) // cards_per_page
+            embed = generate_embed(current_page)
+            message = await ctx.send(embed=embed)
+            if total_pages > 1:
+                await message.add_reaction("⬅️")
+                await message.add_reaction("➡️")
+
+                def check(reaction, user):
+                    return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
+
+                while True:
+                    try:
+                        reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
+                    except asyncio.TimeoutError:
+                        break
+                    else:
+                        if str(reaction.emoji) == "⬅️" and current_page > 1:
+                            current_page -= 1
+                        elif str(reaction.emoji) == "➡️" and current_page < total_pages:
+                            current_page += 1
+                        await message.remove_reaction(reaction, user)
+                        embed = generate_embed(current_page)
+                        await message.edit(embed=embed)
+                        await asyncio.sleep(1)
 
 # Command for setting the cooldown time
 @client.command()
 @commands.has_permissions(administrator=True)
 async def setcooldown(ctx, hours: int):
+    mydb.reconnect()
     global default_cooldown_time
     default_cooldown_time = timedelta(hours=hours)
     for user_id in user_cooldowns:
@@ -151,6 +214,7 @@ async def setcooldown_error(ctx, error):
 
 @client.command()
 async def erasecards(ctx):
+    mydb.reconnect()
     # Prompt the user for confirmation
     await ctx.send("Are you sure you want to erase your card database? This cannot be undone. Reply 'erase' to confirm.")
     def check(message):
@@ -171,6 +235,7 @@ async def erasecards(ctx):
 
 @client.command()
 async def cardview(ctx, card_id=None):
+    mydb.reconnect()
     mycursor = mydb.cursor()
     if card_id:
         mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s", (card_id,))
@@ -236,6 +301,7 @@ async def cardview(ctx, card_id=None):
 @client.command()
 @commands.has_permissions(administrator=True)
 async def addcard(ctx, card_name, image_link, color, rarity: int):
+    mydb.reconnect()
     mycursor = mydb.cursor()
     while True:
         # Generate random 4-digit ID
@@ -259,6 +325,7 @@ async def addcard_error(ctx, error):
 @client.command()
 @commands.has_permissions(administrator=True)
 async def removecard(ctx, card_id: int):
+    mydb.reconnect()
     mycursor = mydb.cursor()
     try:
         mycursor.execute("DELETE FROM cards WHERE card_id = %s", (card_id,))
@@ -275,6 +342,7 @@ async def removecard_error(ctx, error):
 @client.command()
 @commands.has_permissions(administrator=True)
 async def remove(ctx, card_id: int, member: discord.Member = None):
+    mydb.reconnect()
     member = member or ctx.author
     cursor = mydb.cursor(dictionary=True)
     cursor.execute("SELECT * FROM user_cards WHERE user_id = %s AND card_id = %s", (member.id, card_id))
@@ -301,6 +369,7 @@ async def remove_error(ctx, error):
 @client.command()
 @commands.has_permissions(administrator=True)
 async def add(ctx, card_id: int, member: discord.Member = None):
+    mydb.reconnect()
     member = member or ctx.author
     cursor = mydb.cursor(dictionary=True)
     cursor.execute("SELECT * FROM cards WHERE card_id = %s", (card_id,))
@@ -327,6 +396,7 @@ async def add_error(ctx, error):
 
 @client.command()
 async def bias(ctx, card_id: int):
+    mydb.reconnect()
     discuserid = ctx.message.author.id
     mycursor = mydb.cursor()
     mycursor.execute("SELECT card_id FROM user_cards WHERE user_id = %s", (discuserid,))
@@ -343,6 +413,7 @@ async def bias(ctx, card_id: int):
 
 @client.command()
 async def resetbias(ctx):
+    mydb.reconnect()
     discuserid = ctx.message.author.id
     mycursor = mydb.cursor()
     mycursor.execute("UPDATE user_cards SET is_top_card = 0 WHERE user_id = %s AND is_top_card = 1", (discuserid,))
@@ -354,6 +425,7 @@ async def resetbias(ctx):
 
 @client.command()
 async def trade(ctx, card_id: int, member: discord.Member = None):
+    mydb.reconnect()
     mycursor = mydb.cursor()
     sender_id = ctx.author.id
     if member is not None:
@@ -372,8 +444,7 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
     else:
         await ctx.send(f"You don't have any cards with ID {card_id}.")
         return
-    trade_msg = f"{ctx.author.mention} wants to trade card ID {card_id} with you. Please respond with the card ID you wish to trade, or type `decline` to decline."
-    await ctx.send(trade_msg)
+    await ctx.send(f"{member.mention}, {ctx.author.mention} wants to trade card ID {card_id} with you. Please respond with the card ID you wish to trade, or type `decline` to decline.")
     def check(message):
         return message.author == member and message.channel == ctx.channel
     try:
@@ -394,15 +465,34 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
                 await ctx.send(f"{member.mention} doesn't have any cards with ID {card_id_2}.")
                 return
             # perform the trade
-            mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (recipient_id, sender_id, card_id, card_to_trade))
-            mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (sender_id, recipient_id, card_id_2, recipient_card_to_trade))
-            mydb.commit()
-            await ctx.send(f"Trade complete! {ctx.author.mention} now has card ID {card_id_2}, and {member.mention} has card ID {card_id}.")
+            mycursor.execute("SELECT card_name FROM cards WHERE card_id = %s", [card_id])
+            result = mycursor.fetchone()
+            sendingcard = result[0]
+            mycursor.execute("SELECT card_name FROM cards WHERE card_id = %s", [card_id_2])
+            result = mycursor.fetchone()
+            receivingcard = result[0]
+            await ctx.send(f"{ctx.author.mention}, you are giving your {sendingcard} (ID: {card_id}) for {member.mention}'s {receivingcard} (ID: {card_id_2}). Do you accept? (Reply yes or no)")
+
+            def check_author(m):
+                return m.author == ctx.author
+
+            try:
+                msg = await client.wait_for('message', check=check_author, timeout=60.0)
+            except asyncio.TimeoutError:
+                await ctx.send("Trade response timeout.")
+            else:
+                if msg.content.lower() == 'no':
+                    await ctx.send('Trade declined.')
+                elif msg.content.lower() == 'yes':
+                    mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (recipient_id, sender_id, card_id, card_to_trade))
+                    mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (sender_id, recipient_id, card_id_2, recipient_card_to_trade))
+                    mydb.commit()
+                    await ctx.send(f"Trade complete! {ctx.author.mention} now has card ID {card_id_2}, and {member.mention} has card ID {card_id}.")
     except asyncio.TimeoutError:
         await ctx.send(f'{member.mention} did not respond in time. Trade cancelled.')
 
 @client.command()
-async def bothelp(ctx):
+async def help(ctx):
     embed = discord.Embed(title="List of Commands", color=discord.Colour(0x00FF00))
     embed.add_field(name="!draw", value="Draw a random card from the deck.", inline=False)
     embed.add_field(name="!view", value="View your card collection.", inline=False)
@@ -416,6 +506,8 @@ async def bothelp(ctx):
     embed.add_field(name="!bias <CardID>", value="Sets a card to be shown on top of your card list.", inline=False)
     embed.add_field(name="!resetbias", value="Resets your top card.", inline=False)
     embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
+    embed.add_field(name="!help", value="Displays this message.", inline=False)
+    embed.set_footer(text="Want to report a bug, send a feature request, or make your own PulaCard instance? Come find us on GitHub! https://github.com/THEWHITEBOY503/ConnMudaeClone       For information on the MIT license, run !license.")
     await ctx.send(embed=embed)
 
 @client.command()
@@ -437,6 +529,10 @@ async def wipe(ctx):
     cursor.close()
     await ctx.send("All records erased. Thank you for using this bot. We hope to see your continued support. <3")
 
+@client.command()
+async def license(ctx):
+    await ctx.send("MIT License \n \n Copyright (c) 2023 Conner Smith \n \n Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: \n \n The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. \n \n THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.")
+
                 
 # Start the bot with your Discord bot token
-client.run('--TOKEN GOES HERE--')
+client.run('---YOUR TOKEN HERE---')
