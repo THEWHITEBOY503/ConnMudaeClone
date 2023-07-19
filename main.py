@@ -492,6 +492,41 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
         await ctx.send(f'{member.mention} did not respond in time. Trade cancelled.')
 
 @client.command()
+async def gift(ctx, card_id: int, member: discord.Member = None):
+    mydb.reconnect()
+    mycursor = mydb.cursor()
+    sender_id = ctx.author.id
+    if member is not None:
+        recipient_id = member.id
+    else:
+        await ctx.send("Please tag the user you want to gift a card to.")
+        return
+    # check if sender has the card
+    mycursor.execute("SELECT draw_id FROM user_cards WHERE user_id = %s AND card_id = %s", (sender_id, card_id))
+    cards = mycursor.fetchall()
+    if len(cards) == 0:
+        await ctx.send(f"You don't have any cards with ID {card_id}.")
+        return
+    # confirm the gift
+    await ctx.send(f"Are you sure you want to gift card ID {card_id} to {member.mention}? (Reply yes or no)")
+    def check_author(m):
+      return m.author == ctx.author
+    try:
+        msg = await client.wait_for('message', check=check_author, timeout=60.0)
+    except asyncio.TimeoutError:
+        await ctx.send("Gift confirmation timeout.")
+    else:
+        if msg.content.lower() == 'no':
+            await ctx.send('Gift cancelled.')
+        elif msg.content.lower() == 'yes':
+            # gift the card
+            mycursor.execute("UPDATE user_cards SET user_id = %s WHERE user_id = %s AND card_id = %s AND draw_id = %s", (recipient_id, sender_id, card_id, cards[0][0]))
+            mydb.commit()
+            await ctx.send(f"You have gifted card ID {card_id} to {member.mention}.")
+
+
+
+@client.command()
 async def help(ctx):
     embed = discord.Embed(title="List of Commands", color=discord.Colour(0x00FF00))
     embed.add_field(name="!draw", value="Draw a random card from the deck.", inline=False)
@@ -507,6 +542,7 @@ async def help(ctx):
     embed.add_field(name="!resetbias", value="Resets your top card.", inline=False)
     embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
     embed.add_field(name="!help", value="Displays this message.", inline=False)
+    embed.add_field(name="!gift <CardID> @Member", value="Gift a card to a user of your choice.", inline=False)
     embed.set_footer(text="Want to report a bug, send a feature request, or make your own PulaCard instance? Come find us on GitHub! https://github.com/THEWHITEBOY503/ConnMudaeClone       For information on the MIT license, run !license.")
     await ctx.send(embed=embed)
 
