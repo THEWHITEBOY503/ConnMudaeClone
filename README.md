@@ -44,7 +44,10 @@ Resets your top card.
 Trade a card with another member.
 
 - `!wipe`
-Erases the entire database. [ADMIN]
+Erases the entire database. **[ADMIN]** (Soon to be changed to bot operator only)
+
+- `!gift <CardID> @Member`
+Sends a card from your collection into another user's without them needing to give anything back.
 
 ## Dependancies
 This application needs MySQL to function correctly. [You can find installation instructions for your system here.](https://dev.mysql.com/doc/mysql-installation-excerpt/5.7/en/) You also need Python (Obviously) and the `discord.py` package, which can be installed with `pip install discord.py`
