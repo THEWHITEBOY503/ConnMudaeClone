@@ -544,6 +544,7 @@ async def help(ctx):
     embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
     embed.add_field(name="!help", value="Displays this message.", inline=False)
     embed.add_field(name="!gift <CardID> @Member", value="Gift a card to a user of your choice.", inline=False)
+    embed.add_field(name="!license", value="Display information about PulaCard's open-source MIT license", inline=False)
     embed.set_footer(text="Want to report a bug, send a feature request, or get instructions to make your own PulaCard instance? Come find us on GitHub! https://github.com/THEWHITEBOY503/ConnMudaeClone       For information on the MIT license, run !license.        Written with <3 by Conner S. 2023. Thank you for using PulaCard.")
     await ctx.send(embed=embed)
 
