@@ -25,6 +25,9 @@ View details about a specific card, if specified, otherwise display the server d
 - `!addcard "<Name>" "<Link>" "<Color [0xFFFFFF Format]>" <Rarity>`
 Add a card to the deck. You'll need to specify a name for your card, an image link, a color for your card (in 0xFFFFFF HTML color format), and a rarity level 0-16, with 16 being the most rare, 1 being the most, and 0 being manual assignment only. **[ADMIN]**
 
+- `!editcard <CardID> "<Name>" "<Link>" "<Color [0xFFFFFF Format]>" <Rarity>`
+Edit a card in the database. All values must be inputted, even if they have not changed. **[ADMIN]**
+
 - `!removecard <CardID>`
 Remove a card from the deck. **[ADMIN]**
 
@@ -48,6 +51,10 @@ Erases the entire database. **[ADMIN]** (Soon to be changed to bot operator only
 
 - `!gift <CardID> @Member`
 Sends a card from your collection into another user's without them needing to give anything back.
+
+- `!license`
+View information about PulaCard's MIT license.
+
 
 ## Dependancies
 This application needs MySQL to function correctly. [You can find installation instructions for your system here.](https://dev.mysql.com/doc/mysql-installation-excerpt/5.7/en/) You also need Python (Obviously) and the `discord.py` package, which can be installed with `pip install discord.py`
