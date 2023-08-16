@@ -536,6 +536,7 @@ async def help(ctx):
     embed.add_field(name="!cardview <Optional card ID>", value="View details about a specific card, if specified, otherwise display the server deck.", inline=False)
     embed.add_field(name="!addcard \"<Name>\" \"<Link>\" \"<Color [0xFFFFFF Format]>\" <Rarity>", value="Add a card to the deck. [ADMIN]", inline=False)
     embed.add_field(name="!removecard <CardID>", value="Remove a card from the deck. [ADMIN]", inline=False)
+    embed.add_field(name="!editcard <CardID> \"<Name>\" \"<Link>\" \"<Color [0xFFFFFF Format]>\" <Rarity>", value="Edits a card in the database. [ADMIN]", inline=False)
     embed.add_field(name="!remove <CardID> <Optional Member>", value="Remove a card from someone's collection. If no user is specified, it will be removed from your own. [ADMIN]", inline=False)
     embed.add_field(name="!add <CardID> <Optional Member>", value="Add a card to someone's collection. If no user is specified, it will be added to your own. [ADMIN]", inline=False)
     embed.add_field(name="!bias <CardID>", value="Sets a card to be shown on top of your card list.", inline=False)
@@ -543,7 +544,7 @@ async def help(ctx):
     embed.add_field(name="!trade <CardID> @Member", value="Trade a card with another member.", inline=False)
     embed.add_field(name="!help", value="Displays this message.", inline=False)
     embed.add_field(name="!gift <CardID> @Member", value="Gift a card to a user of your choice.", inline=False)
-    embed.set_footer(text="Want to report a bug, send a feature request, or make your own PulaCard instance? Come find us on GitHub! https://github.com/THEWHITEBOY503/ConnMudaeClone       For information on the MIT license, run !license.")
+    embed.set_footer(text="Want to report a bug, send a feature request, or get instructions to make your own PulaCard instance? Come find us on GitHub! https://github.com/THEWHITEBOY503/ConnMudaeClone       For information on the MIT license, run !license.        Written with <3 by Conner S. 2023. Thank you for using PulaCard.")
     await ctx.send(embed=embed)
 
 @client.command()
@@ -569,6 +570,29 @@ async def wipe(ctx):
 async def license(ctx):
     await ctx.send("MIT License \n \n Copyright (c) 2023 Conner Smith \n \n Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: \n \n The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. \n \n THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.")
 
+@client.command()
+@commands.has_permissions(administrator=True)
+async def editcard(ctx, card_id=None, card_name=None, image_link=None, color=None, rarity=None):
+    if card_id is None or card_name is None or image_link is None or color is None or rarity is None:
+        await ctx.send("Missing one or more required arguments. Usage: !editcard card_id card_name image_link color rarity")
+        return
+    mydb.reconnect()
+    mycursor = mydb.cursor()
+    if card_id:
+        mycursor.execute("SELECT card_id FROM cards WHERE card_id = %s", (card_id,))
+        result = mycursor.fetchone()
+        if not result:
+            await ctx.send(f"Card with ID {card_id} does not exist.")
+            return
+        sql = "UPDATE cards SET card_name = %s, card_id = %s, image_link = %s, color = %s, rarity = %s WHERE card_ID = %s"
+        val = (card_name, card_id, image_link, color, rarity, card_id)
+        mycursor.execute(sql, val)
+        mydb.commit()
+        await ctx.send(f"Card updated: {card_name} (ID: {card_id})")
+@addcard.error
+async def editcard_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
                 
 # Start the bot with your Discord bot token
 client.run('---YOUR TOKEN HERE---')
