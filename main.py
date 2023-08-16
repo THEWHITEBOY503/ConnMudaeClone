@@ -590,7 +590,7 @@ async def editcard(ctx, card_id=None, card_name=None, image_link=None, color=Non
         mycursor.execute(sql, val)
         mydb.commit()
         await ctx.send(f"Card updated: {card_name} (ID: {card_id})")
-@addcard.error
+@editcard.error
 async def editcard_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
