@@ -64,11 +64,12 @@ async def on_command_error(ctx, error):
 @client.command()
 async def draw(ctx):
     mydb.reconnect()
-    server_id = ctx.guild.id
+    server_id = str(ctx.guild.id)
     discuserid = ctx.author.id
     cursor = mydb.cursor()
     cursor.execute("SELECT card_name, card_ID, image_link, color, rarity FROM cards WHERE rarity > 0 AND server = %s;", (server_id,))
     results = cursor.fetchall()
+    cursor.close()
     total_rarity = sum(result[4] for result in results)
     rand_int = random.randint(0, total_rarity-1)
     cumulative_rarity = 0
@@ -83,6 +84,7 @@ async def draw(ctx):
     # Generate draw ID
     draw_id = uuid.uuid4().hex  # Generate a random hexadecimal string
     # Check if the server has a cooldown time set in the database
+    cursor = mydb.cursor()
     cursor.execute("SELECT cooldown_hours FROM server_cooldowns WHERE server_id = %s", (str(ctx.guild.id),))
     cooldown_result = cursor.fetchone()
     if cooldown_result is not None:
@@ -108,9 +110,9 @@ async def draw(ctx):
 async def view(ctx, card_id=None, member: discord.Member = None):
     mydb.reconnect()
     server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     if card_id:
-        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s AND server = %s", (card_id, server_id))
+        mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s AND server = %s", (card_id, server_id,))
         result = mycursor.fetchone()
         if not result:
             await ctx.send(f"Card with ID {card_id} does not exist.")
@@ -126,7 +128,7 @@ async def view(ctx, card_id=None, member: discord.Member = None):
         await ctx.send(embed=embed)
     else:
         discuserid = ctx.message.author.id if not member else member.id
-        mycursor.execute("SELECT card_id, is_top_card, COUNT(*) as count FROM user_cards WHERE user_id = %s AND server = %s GROUP BY card_id, is_top_card ORDER BY is_top_card DESC", (discuserid, server_id))
+        mycursor.execute("SELECT card_id, is_top_card, COUNT(*) as count FROM user_cards WHERE user_id = %s AND server = %s GROUP BY card_id, is_top_card ORDER BY is_top_card DESC", (discuserid, server_id,))
         result = mycursor.fetchall()
         if len(result) == 0:
             if not member:
@@ -241,7 +243,7 @@ async def erasecards(ctx):
 async def cardview(ctx, card_id=None):
     mydb.reconnect()
     server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     if card_id:
         mycursor.execute("SELECT card_name, card_id, image_link, color FROM cards WHERE card_id = %s AND server = %s", (card_id, server_id))
         result = mycursor.fetchone()
@@ -307,8 +309,8 @@ async def cardview(ctx, card_id=None):
 @commands.has_permissions(administrator=True)
 async def addcard(ctx, card_name, image_link, color, rarity: int):
     mydb.reconnect()
-    server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    server_id = str(ctx.guild.id)
+    mycursor = mydb.cursor(buffered=True)
     while True:
         # Generate random 4-digit ID
         card_id = ''.join(random.choices(string.digits, k=4))
@@ -333,7 +335,7 @@ async def addcard_error(ctx, error):
 async def removecard(ctx, card_id: int):
     mydb.reconnect()
     server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     try:
         mycursor.execute("DELETE FROM cards WHERE card_id = %s AND server = %s", (card_id, server_id))
         mycursor.execute("DELETE FROM user_cards WHERE card_id = %s AND server = %s", (card_id, server_id))
@@ -408,7 +410,7 @@ async def bias(ctx, card_id: int):
     mydb.reconnect()
     server_id = ctx.guild.id
     discuserid = ctx.message.author.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     mycursor.execute("SELECT card_id FROM user_cards WHERE user_id = %s AND server = %s", (discuserid, server_id))
     result = mycursor.fetchall()
     if len(result) == 0:
@@ -426,7 +428,7 @@ async def resetbias(ctx):
     mydb.reconnect()
     server_id = ctx.guild.id
     discuserid = ctx.message.author.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     mycursor.execute("UPDATE user_cards SET is_top_card = 0 WHERE user_id = %s AND is_top_card = 1 AND server = %s", (discuserid, server_id))
     mydb.commit()
     if mycursor.rowcount > 0:
@@ -438,7 +440,7 @@ async def resetbias(ctx):
 async def trade(ctx, card_id: int, member: discord.Member = None):
     mydb.reconnect()
     server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     sender_id = ctx.author.id
     if member is not None:
         recipient_id = member.id
@@ -507,7 +509,7 @@ async def trade(ctx, card_id: int, member: discord.Member = None):
 async def gift(ctx, card_id: int, member: discord.Member = None):
     mydb.reconnect()
     server_id = ctx.guild.id
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     sender_id = ctx.author.id
     if member is not None:
         recipient_id = member.id
@@ -591,15 +593,15 @@ async def editcard(ctx, card_id=None, card_name=None, image_link=None, color=Non
         await ctx.send("Missing one or more required arguments. Usage: !editcard card_id card_name image_link color rarity")
         return
     mydb.reconnect()
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
     if card_id:
         mycursor.execute("SELECT card_id FROM cards WHERE card_id = %s AND server = %s", (card_id, server_id))
         result = mycursor.fetchone()
         if not result:
             await ctx.send(f"Card with ID {card_id} does not exist.")
             return
-        sql = "UPDATE cards SET card_name = %s, card_id = %s, image_link = %s, color = %s, rarity = %s WHERE card_ID = %s"
-        val = (card_name, card_id, image_link, color, rarity, card_id)
+        sql = "UPDATE cards SET card_name = %s, card_id = %s, image_link = %s, color = %s, rarity = %s WHERE card_ID = %s AND server = %s"
+        val = (card_name, card_id, image_link, color, rarity, card_id, server_id)
         mycursor.execute(sql, val)
         mydb.commit()
         await ctx.send(f"Card updated: {card_name} (ID: {card_id})")
@@ -607,6 +609,6 @@ async def editcard(ctx, card_id=None, card_name=None, image_link=None, color=Non
 async def editcard_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("I'm sorry, but you don't have permission to run this command. You need to have the server administrator permission.")
-    
+                
 # Start the bot with your Discord bot token
 client.run('---YOUR TOKEN HERE---')
