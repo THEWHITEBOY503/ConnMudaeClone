@@ -1,5 +1,8 @@
+# PulaCard is now public!
+Please click [here](https://discord.com/oauth2/authorize?client_id=776127816273494038&scope=bot&permissions=429497116736) if you'd like to add PulaCard to your server.
 
-# ConnMudaeClone
+
+# PulaCard
 
 This bot is an open-source Discord card game, similar to Mudae. It allows you to draw a card every X hours (default 6), and even trade cards with your friends.
 
